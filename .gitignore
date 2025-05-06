@@ -1,0 +1,45 @@
+# Ignore virtual environments
+.venv/
+venv/
+
+# Ignore environment variable files
+.env
+
+# Ignore audio output files
+audio_outputs/
+*.mp3
+*.wav
+
+# Ignore knowledge base (if it's user-specific or large)
+knowledge_base/
+
+# Ignore credentials
+google_creds.json
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python packaging
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Logs and caches
+*.log
+*.log.*
+*.tmp
+.cache/
+*.sqlite3
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+
+# OS-generated files
+.DS_Store
+Thumbs.db
