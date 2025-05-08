@@ -7,7 +7,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 FALLBACK_VOICES = {
-    'en': 'bajNon13EdhNMndG3z05',
+    'en': '21m00Tcm4TlvDq8ikWAM',
     'hi': 'Zp1aWhL05Pi5BkhizFC3',
     'te': 'ktIdXisRrub2VKRszryF'
 }
@@ -49,7 +49,10 @@ def get_voice_id(language):
 
 def generate_speech(text, language, output_path="response.mp3"):
     try:
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        dir_name = os.path.dirname(output_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+
         logger.info(f"Generating {language} speech...")
         validate_text(text, language)
         voice_id = get_voice_id(language)
@@ -85,6 +88,11 @@ def generate_speech(text, language, output_path="response.mp3"):
         
         logger.info(f"Generated {os.path.getsize(output_path)} bytes to {output_path}")
         return True
+
+    except Exception as e:
+        logger.error(f"TTS failed: {str(e)}", exc_info=True)
+        return False
+
 
     except Exception as e:
         logger.error(f"TTS failed: {str(e)}", exc_info=True)

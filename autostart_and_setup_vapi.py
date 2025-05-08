@@ -40,29 +40,19 @@ except Exception as e:
     ngrok_process.terminate()
     exit(1)
 
-# Fetch assistant details
-print("📡 Fetching assistant details...")
+# Configure headers for VAPI API
 headers = {
     "Authorization": f"Bearer {VAPI_API_KEY}",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    "Accept": "application/json"
 }
 
-assistant_resp = requests.get(f"https://api.vapi.ai/assistant/{ASSISTANT_ID}", headers=headers)
-
-if assistant_resp.status_code == 200:
-    assistant_data = assistant_resp.json()
-    print(f"🤖 Using Assistant: {assistant_data.get('name')} (ID: {ASSISTANT_ID})")
-else:
-    print("❌ Failed to fetch assistant info. Please check the ASSISTANT_ID.")
-    print(assistant_resp.text)
-    app_process.terminate()
-    ngrok_process.terminate()
-    exit(1)
-
-# Update Vapi Assistant server URL
-print("🔄 Updating Vapi Assistant server URL...")
+# Update VAPI Assistant server URL
+print("🔄 Updating VAPI Assistant server URL...")
 body = {
-    "serverUrl": f"{public_url}/vapi-webhook"
+    "server": {
+        "url": f"{public_url.rstrip('/')}/vapi-webhook"
+    }
 }
 
 response = requests.patch(
@@ -72,12 +62,24 @@ response = requests.patch(
 )
 
 if response.status_code == 200:
-    print(f"✅ Webhook updated successfully: {public_url}/vapi-webhook")
+    updated_data = response.json()
+    if updated_data.get('server', {}).get('url') == f"{public_url.rstrip('/')}/vapi-webhook":
+        print(f"✅ Webhook updated successfully: {updated_data['server']['url']}")
+        
+        # Verify the update
+        verify_response = requests.get(
+            f"https://api.vapi.ai/assistant/{ASSISTANT_ID}",
+            headers=headers
+        )
+        print("Current assistant config:", verify_response.json())
+    else:
+        print("❌ Webhook URL not updated as expected")
+        print(f"Response: {updated_data}")
 elif response.status_code == 404:
     print("❌ Assistant not found. Double-check the ASSISTANT_ID.")
     print(response.text)
 else:
-    print(f"❌ Failed to update webhook: {response.text}")
+    print(f"❌ Failed to update webhook (HTTP {response.status_code}): {response.text}")
 
 print("🚀 All systems running. Press Ctrl+C to stop.")
 

@@ -136,62 +136,79 @@ def serve_audio(filename):
         return jsonify({"error": "File not found"}), 404
 
 # --- VAPI Webhook Endpoint ---
+# ... [keep all previous code until the vapi-webhook endpoint] ...
+
 @app.route('/vapi-webhook', methods=['POST'])
 def vapi_webhook():
+    ai_text = ""
+    audio_url = None
+
     try:
+        logger.info(f"Incoming VAPI request headers: {dict(request.headers)}")
+        logger.info(f"Request data: {request.get_data(as_text=True)}")
+
+        if not request.is_json:
+            return jsonify({"message": "Request must be JSON", "audioUrl": None}), 400
+
         data = request.get_json()
+        if not data:
+            return jsonify({"message": "No data received", "audioUrl": None}), 400
 
-        # Step 1: Get user message (text-based or speech)
-        user_text = data.get("transcript") or ""
-        lang = data.get("language", "en")  # Default to English
-        logger.info(f"Received from Vapi: {user_text} | Lang: {lang}")
+        # ✅ Correct access to conversation messages
+        messages = data.get("message", {}).get("conversation", [])
+        last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
 
-        if not user_text.strip():
+        if last_user_msg:
+            user_text = last_user_msg.get('content', '')
+            lang = 'en'
+
+            from openai_chat import get_ai_response
+            ai_text = get_ai_response([{"role": "user", "content": user_text}])
+            logger.info(f"AI generated response: {ai_text}")
+
+            output_file = f"tts_{hash(ai_text)}.mp3"
+            output_path = os.path.join("audio_outputs", output_file)
+            os.makedirs("audio_outputs", exist_ok=True)
+
+            success = False
+            if os.getenv("ELEVENLABS_API_KEY"):
+                from elevenlabs_tts import generate_speech
+                success = generate_speech(ai_text, lang, output_path)
+            else:
+                from gtts import gTTS
+                try:
+                    tts = gTTS(text=ai_text, lang=lang)
+                    tts.save(output_path)
+                    success = True
+                except Exception as e:
+                    logger.error(f"gTTS failed: {str(e)}")
+
+            if not success:
+                raise Exception("TTS generation failed")
+
+            audio_url = f"{os.getenv('HOSTED_URL', request.host_url)}audio/{output_file}"
+
             return jsonify({
-                "text": "Sorry, I didn't catch that.",
-                "audioUrl": None
+                "type": "audio",
+                "message": ai_text,
+                "audioUrl": audio_url
             })
 
-        # Step 2: Get AI response using your /generate endpoint
-        from openai_chat import get_ai_response
-        messages = [{"role": "user", "content": user_text}]
-        ai_text = get_ai_response(messages)
-
-        logger.info(f"AI response: {ai_text}")
-
-        # Step 3: Convert AI response to speech using TTS (reuse your /tts logic)
-        from elevenlabs_tts import generate_speech
-        output_file = f"tts_{hash(ai_text)}.mp3"
-        output_path = os.path.join("audio_outputs", output_file)
-        os.makedirs("audio_outputs", exist_ok=True)
-
-        # Prefer ElevenLabs if key is present, fallback to gTTS
-        success = False
-        if os.getenv("ELEVENLABS_API_KEY"):
-            success = generate_speech(ai_text, lang, output_path)
-        else:
-            from gtts import gTTS
-            tts = gTTS(text=ai_text, lang=lang)
-            tts.save(output_path)
-            success = True
-
-        if not success:
-            raise Exception("TTS generation failed")
-
-        audio_url = f"{os.getenv('HOSTED_URL', request.host_url)}audio/{output_file}"
-
-        # Step 4: Send back both text and audio URL to Vapi
+        # Fallback response if no user message is found
         return jsonify({
-            "text": ai_text,
-            "audioUrl": audio_url
+            "message": "No valid user message found",
+            "audioUrl": None
         })
 
     except Exception as e:
         logger.error(f"VAPI webhook failed: {str(e)}", exc_info=True)
         return jsonify({
-            "text": "Oops! Something went wrong.",
+            "message": "Oops! Something went wrong.",
             "audioUrl": None
         }), 500
+
+
+
 
 
 if __name__ == '__main__':
