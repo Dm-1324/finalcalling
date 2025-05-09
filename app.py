@@ -140,72 +140,52 @@ def serve_audio(filename):
 
 @app.route('/vapi-webhook', methods=['POST'])
 def vapi_webhook():
-    ai_text = ""
-    audio_url = None
-
     try:
-        logger.info(f"Incoming VAPI request headers: {dict(request.headers)}")
-        logger.info(f"Request data: {request.get_data(as_text=True)}")
-
+        logger.info("🔥 VAPI WEBHOOK TRIGGERED 🔥")
+        
         if not request.is_json:
-            return jsonify({"message": "Request must be JSON", "audioUrl": None}), 400
+            return jsonify({"error": "Request must be JSON"}), 400
 
         data = request.get_json()
-        if not data:
-            return jsonify({"message": "No data received", "audioUrl": None}), 400
-
-        # ✅ Correct access to conversation messages
-        messages = data.get("message", {}).get("conversation", [])
-        last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
-
-        if last_user_msg:
-            user_text = last_user_msg.get('content', '')
-            lang = 'en'
-
-            from openai_chat import get_ai_response
-            ai_text = get_ai_response([{"role": "user", "content": user_text}])
-            logger.info(f"AI generated response: {ai_text}")
-
-            output_file = f"tts_{hash(ai_text)}.mp3"
-            output_path = os.path.join("audio_outputs", output_file)
-            os.makedirs("audio_outputs", exist_ok=True)
-
-            success = False
-            if os.getenv("ELEVENLABS_API_KEY"):
-                from elevenlabs_tts import generate_speech
-                success = generate_speech(ai_text, lang, output_path)
-            else:
-                from gtts import gTTS
-                try:
-                    tts = gTTS(text=ai_text, lang=lang)
-                    tts.save(output_path)
-                    success = True
-                except Exception as e:
-                    logger.error(f"gTTS failed: {str(e)}")
-
-            if not success:
-                raise Exception("TTS generation failed")
-
-            audio_url = f"{os.getenv('HOSTED_URL', request.host_url)}audio/{output_file}"
-
-            return jsonify({
-                "type": "audio",
-                "message": ai_text,
-                "audioUrl": audio_url
-            })
-
-        # Fallback response if no user message is found
-        return jsonify({
-            "message": "No valid user message found",
-            "audioUrl": None
-        })
+        logger.info(f"📦 Received payload type: {data.get('message', {}).get('type')}")
+        
+        # Handle different message types
+        message_type = data.get('message', {}).get('type')
+        
+        if message_type == 'conversation-update':
+            conversation = data['message'].get('conversation', [])
+            last_user_msg = next((m for m in reversed(conversation) if m.get('role') == 'user'), None)
+            
+            if last_user_msg:
+                user_text = last_user_msg.get('content', '')
+                logger.info(f"💬 Processing user message: {user_text}")
+                
+                # Generate response
+                from openai_chat import get_ai_response
+                ai_text = get_ai_response([{"role": "user", "content": user_text}])
+                
+                # Generate audio
+                output_file = f"tts_{hash(ai_text)}.mp3"
+                output_path = os.path.join("audio_outputs", output_file)
+                os.makedirs("audio_outputs", exist_ok=True)
+                
+                if os.getenv("ELEVENLABS_API_KEY"):
+                    from elevenlabs_tts import generate_speech
+                    if not generate_speech(ai_text, 'en', output_path):
+                        raise Exception("TTS generation failed")
+                
+                return jsonify({
+                    "type": "audio",
+                    "message": ai_text,
+                    "audioUrl": f"{os.getenv('HOSTED_URL', request.host_url)}audio/{output_file}"
+                })
+        
+        # For status updates or other message types
+        return jsonify({"status": "handled"})
 
     except Exception as e:
-        logger.error(f"VAPI webhook failed: {str(e)}", exc_info=True)
-        return jsonify({
-            "message": "Oops! Something went wrong.",
-            "audioUrl": None
-        }), 500
+        logger.error(f"❌ Webhook error: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 
 
